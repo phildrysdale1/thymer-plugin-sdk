@@ -272,6 +272,27 @@ class DataAPI {
      * @returns {PluginUser[]}
      */
     public getActiveUsers(): PluginUser[];
+    /**
+     * @public
+     * Search for items in the workspace using a query string.
+     *
+     * @example
+     * // Search for all tasks due today
+     * const results = await this.data.searchByQuery("@task @today");
+     * console.log(`Found ${results.lines.length} matching lines`);
+     *
+     * @example
+     * // Search for text
+     * const results = await this.data.searchByQuery("project meeting notes");
+     * for (const record of results.records) {
+     *     console.log(record.getName());
+     * }
+     *
+     * @param {string} query - The search query string (supports text search and query syntax like @task, @due, @today, etc.)
+     * @param {number} [maxResults=100] - Maximum number of results to return
+     * @returns {Promise<PluginSearchResult>}
+     */
+    public searchByQuery(query: string, maxResults?: number): Promise<PluginSearchResult>;
 }
 
 /**
@@ -1614,6 +1635,21 @@ class PluginRecord {
      */
     public text(name: any): string | null;
 }
+
+type PluginSearchResult = {
+    /**
+     * - Error message if search failed, empty string otherwise
+     */
+    error: string;
+    /**
+     * - Records (pages/documents) that matched the query
+     */
+    records: PluginRecord[];
+    /**
+     * - Individual line items that matched the query
+     */
+    lines: PluginLineItem[];
+};
 
 type PluginSideBarItem = {
     /**
