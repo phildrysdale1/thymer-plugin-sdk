@@ -259,6 +259,13 @@ class DataAPI {
     public createGlobalPlugin(): Promise<PluginGlobalPluginAPI | null>;
     /**
      * @public
+     * Create a new collection
+     *
+     * @returns {Promise<PluginCollectionAPI|null>}
+     */
+    public createCollection(): Promise<PluginCollectionAPI | null>;
+    /**
+     * @public
      * Get a plugin by its GUID
      *
      * @param {string} guid
