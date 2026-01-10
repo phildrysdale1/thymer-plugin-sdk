@@ -233,7 +233,6 @@ type CollectionViewType = "table" | "board" | "gallery" | "calendar" | "record" 
 
 class DataAPI {
 
-
     /**
      * @public
      * Get all records in this workspace
@@ -321,6 +320,7 @@ class DataAPI {
      * @returns {Promise<PluginSearchResult>}
      */
     public searchByQuery(query: string, maxResults?: number): Promise<PluginSearchResult>;
+    #private;
 }
 
 /**
@@ -388,7 +388,6 @@ class DateTime {
      * const dt3 = record.prop("Due Date").datetime();
      */
     constructor(value: Date | DateTimeValue | undefined);
-
     /**
      * @public
      * Get the DateTimeValue that can be used with property.set().
@@ -442,6 +441,7 @@ class DateTime {
      * @param {DateTime|null} endDateTime
      */
     public setRangeEnd(endDateTime: DateTime | null): this;
+    #private;
 }
 
 /**
@@ -1179,8 +1179,6 @@ class PluginLineItem {
     segments: PluginLineItemSegment[];
     /** @type {PluginLineItemProps?} */
     props: PluginLineItemProps | null;
-    _plugin: any;
-    _item: any;
     /**
      * @public
      * Set the segments of the line item
@@ -1312,6 +1310,7 @@ class PluginLineItem {
      * @returns {Promise<boolean>} true if deleted, false if deletion failed (e.g., has children)
      */
     public delete(): Promise<boolean>;
+    #private;
 }
 
 type PluginLineItemProps = {
@@ -1386,7 +1385,6 @@ type PluginNavigationButton = {
 class PluginPanel {
 
 
-    _plugin: any;
     /**
      * @public
      * Get the panel's unique identifier
@@ -1475,6 +1473,7 @@ class PluginPanel {
      * @returns {PluginCollectionAPI?}
      */
     public getActiveCollection(): PluginCollectionAPI | null;
+    #private;
 }
 
 type PluginPanelNavigation = {
@@ -1508,8 +1507,6 @@ class PluginPluginAPIBase {
 
     /** @type {string} */
     guid: string;
-    collectionRoot: any;
-
     /**
      * @public
      * Preview a plugin with the given code, CSS, and config. Hot reloads the plugin without saving.
@@ -1564,6 +1561,9 @@ class PluginPluginAPIBase {
      * @returns {Promise<boolean>}
      */
     public saveCSS(css: string): Promise<boolean>;
+
+
+    #private;
 }
 
 /**
@@ -1579,10 +1579,6 @@ class PluginProperty {
     name: string;
     /** @type {string} */
     guid: string;
-    plugin: any;
-    field: any;
-    value: any;
-    row: any;
     /**
      * @public
      * Get the property value as a number, or null if a number value is not available.
@@ -1656,14 +1652,14 @@ class PluginProperty {
      * @returns {DateTime?}
      */
     public datetime(): DateTime | null;
+    #private;
 }
 
 class PluginRecord {
 
     /** @type {string} */
     guid: string;
-    plugin: any;
-    row: any;
+
 
     /**
      * @public
@@ -1775,6 +1771,7 @@ class PluginRecord {
      * @returns {string?}
      */
     public text(name: any): string | null;
+    #private;
 }
 
 type PluginSearchResult = {
@@ -1840,8 +1837,6 @@ class PluginUser {
     guid: string;
     /** @type {string} */
     workspaceGuid: string;
-    plugin: any;
-    user: any;
     /**
      * @public
      * Get the user's avatar image as base64 data
@@ -1860,27 +1855,24 @@ class PluginUser {
      * @returns {string?}
      */
     public getEmail(): string | null;
+    #private;
 }
 
 class PluginViewConfig {
 
     /** @type {string} */
     name: string;
-
-
     /** @type {string} */
     guid: string;
     /** @type {PluginViewType} */
     type: PluginViewType;
+    #private;
 }
 
 class PluginViewContext {
 
     /** @type {string} - unique local ID for the instance of this view (i.e. stable while the view is open in the UI) */
     instanceId: string;
-    plugin: any;
-    viewConfig: any;
-    viewClass: any;
 
     /**
      * @public
@@ -1992,6 +1984,7 @@ class PluginViewContext {
      * @param {string} guid
      */
     public openRecordInOtherPanel(guid: string): void;
+    #private;
 }
 
 /**
@@ -2033,7 +2026,6 @@ const PROP_TYPE_USER: "user";
  */
 class PropertiesAPI {
 
-    plugin: any;
     /**
      * @public
      *
@@ -2083,6 +2075,7 @@ class PropertiesAPI {
         prop: PluginProperty;
         view: PluginViewConfig | null;
     }) => HTMLElement | null): void;
+    #private;
 }
 
 type PropertyChoiceOption = {
@@ -2172,7 +2165,6 @@ const SORT_DIR_ASC: "asc";
 const SORT_DIR_DESC: "desc";
 
 class UIAPI {
-
 
     /**
      * @public
@@ -2394,6 +2386,7 @@ class UIAPI {
     public createPanel(options?: {
         afterPanel?: PluginPanel;
     }): Promise<PluginPanel | null>;
+    #private;
 }
 
 /**
@@ -2401,7 +2394,6 @@ class UIAPI {
  */
 class ViewsAPI {
 
-    plugin: any;
     /**
      * @public
      * Registers a custom view type for the plugin.
@@ -2515,6 +2507,7 @@ class ViewsAPI {
         dateVal: Date;
         viewContext: PluginViewContext;
     }) => void): void;
+    #private;
 }
 
 }
