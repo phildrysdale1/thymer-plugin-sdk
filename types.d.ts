@@ -359,7 +359,7 @@ class DataAPI {
  * in a different timezone, the time is converted to your browser's timezone.
  *
  * Use `setTime(null)` to remove the time component (and timezone) and keep only the date.
- * Use `setRangeTo(endDateTime)` to create a date range.
+ * Use `setRangeEnd(endDateTime)` to create a date range.
  *
  * @example
  * // Date + time
@@ -380,12 +380,92 @@ class DataAPI {
  *
  * @example
  * // Date range (multi-day event)
- * const start = new DateTime(new Date(2024, 0, 15));
- * const end = new DateTime(new Date(2024, 0, 20));
- * start.setRangeTo(end); // Creates a date range from Jan 15 to Jan 20
+ * const start = DateTime.dateOnly(2024, 0, 15);
+ * const end = DateTime.dateOnly(2024, 0, 20);
+ * start.setRangeEnd(end); // Creates a date range from Jan 15 to Jan 20
  * record.prop("Event Period").set(start.value());
  */
 class DateTime {
+    /**
+     * @public
+     * Create a date-only DateTime (no time component, no timezone).
+     *
+     * @param {number} year - Full year (e.g. 2024)
+     * @param {number} month - Month (0-11, where 0 = January)
+     * @param {number} day - Day of month (1-31)
+     * @returns {DateTime}
+     *
+     * @example
+     * const dt = DateTime.dateOnly(2024, 0, 15); // Jan 15, 2024 (date only)
+     * record.prop("Due Date").set(dt.value());
+     */
+    public static dateOnly(year: number, month: number, day: number): DateTime;
+    /**
+     * @public
+     * Create a time-only DateTime (no date component).
+     *
+     * @param {number} hours - Hours (0-23)
+     * @param {number} [minutes=0] - Minutes (0-59)
+     * @param {number} [seconds=0] - Seconds (0-59)
+     * @returns {DateTime}
+     *
+     * @example
+     * const dt = DateTime.timeOnly(14, 30); // 2:30pm (time only)
+     * record.prop("Reminder Time").set(dt.value());
+     */
+    public static timeOnly(hours: number, minutes?: number, seconds?: number): DateTime;
+    /**
+     * @public
+     * Create a date+time DateTime from numeric parts.
+     *
+     * @param {number} year - Full year (e.g. 2024)
+     * @param {number} month - Month (0-11, where 0 = January)
+     * @param {number} day - Day of month (1-31)
+     * @param {number} hours - Hours (0-23)
+     * @param {number} minutes - Minutes (0-59)
+     * @param {number} seconds - Seconds (0-59)
+     * @returns {DateTime}
+     *
+     * @example
+     * const dt = DateTime.fromYMDHMS(2024, 0, 15, 14, 30, 0); // Jan 15, 2024 14:30
+     * record.prop("Due Date").set(dt.value());
+     */
+    public static dateAndTime(year: number, month: number, day: number, hours: number, minutes: number, seconds: number): DateTime;
+    /**
+     * @public
+     * Parse a human-readable date/time string exactly like Thymer does.
+     *
+     * @param {string} input
+     * @returns {DateTime|null}
+     *
+     * @example
+     * // Regular date formats
+     * DateTime.parseDateTimeString("2024-01-15")
+     * DateTime.parseDateTimeString("1/15/2024")
+     * DateTime.parseDateTimeString("aug 13")
+     * DateTime.parseDateTimeString("13 aug")
+     *
+     * // Time formats
+     * DateTime.parseDateTimeString("13:35")
+     * DateTime.parseDateTimeString("1:35pm")
+     * DateTime.parseDateTimeString("3pm")
+     *
+     * // Date and time combined
+     * DateTime.parseDateTimeString("2024-01-15 14:30")
+     * DateTime.parseDateTimeString("aug 13 3pm")
+     *
+     * // Natural language
+     * DateTime.parseDateTimeString("today")
+     * DateTime.parseDateTimeString("tomorrow")
+     * DateTime.parseDateTimeString("monday")
+     * DateTime.parseDateTimeString("monday 3pm")
+     *
+     * // Ranges
+     * DateTime.parseDateTimeString("monday to friday")
+     * DateTime.parseDateTimeString("1:35pm to 2:35pm")
+     * DateTime.parseDateTimeString("last monday 3pm to today 3pm")
+     */
+    public static parseDateTimeString(input: string): DateTime | null;
     /**
      * @public
      * Create a new DateTime object.
@@ -423,6 +503,45 @@ class DateTime {
     public toDate(): Date;
     /**
      * @public
+     * Get the individual date and time parts.
+     *
+     * Returns (year, month, day) when the DateTime has a date component.
+     * Returns (hours, minutes, seconds) when the DateTime has a time component.
+     *
+     * @returns {{
+             *   year?: number,
+             *   month?: number,
+             *   day?: number,
+             *   hours?: number,
+             *   minutes?: number,
+             *   seconds?: number
+             * }}
+     *
+     * @example
+     * const dt = DateTime.dateOnly(2024, 0, 15);
+     * const parts = dt.getParts();
+     * // { year: 2024, month: 0, day: 15 }
+     *
+     * @example
+     * const dt = DateTime.timeOnly(14, 30, 0);
+     * const parts = dt.getParts();
+     * // { hours: 14, minutes: 30, seconds: 0 }
+     *
+     * @example
+     * const dt = DateTime.dateAndTime(2024, 0, 15, 14, 30, 0);
+     * const parts = dt.getParts();
+     * // { year: 2024, month: 0, day: 15, hours: 14, minutes: 30, seconds: 0 }
+     */
+    public getParts(): {
+        year?: number;
+        month?: number;
+        day?: number;
+        hours?: number;
+        minutes?: number;
+        seconds?: number;
+    };
+    /**
+     * @public
      * Set or remove the time component of this DateTime.
      *
      * @param {number|null} hours - Hours (0-23), or null to remove the time component
@@ -441,21 +560,30 @@ class DateTime {
      * @public
      * Set a date range from this DateTime to another DateTime.
      *
-     * @param {DateTime} endDateTime - The end of the range (another DateTime object)
+     * @param {DateTime|null} endDateTime - The end of the range (another DateTime object)
      *
      * @example
-     * const start = new DateTime(new Date(2024, 0, 15));
-     * const end = new DateTime(new Date(2024, 0, 20));
-     * start.setRangeTo(end); // Creates a range from Jan 15 to Jan 20
-     */
-    public setRangeTo(endDateTime: DateTime): this;
-    /**
-     * @public
-     * Set (or clear) the range end.
-     *
-     * @param {DateTime|null} endDateTime
+     * const start = DateTime.dateOnly(2024, 0, 15);
+     * const end = DateTime.dateOnly(2024, 0, 20);
+     * start.setRangeEnd(end); // Creates a date range from Jan 15 to Jan 20
      */
     public setRangeEnd(endDateTime: DateTime | null): this;
+    /**
+     * @public
+     * Get the end of the date range as a new DateTime, or null if no range is set.
+     *
+     * @returns {DateTime|null} - A new DateTime representing the range end, or null
+     *
+     * @example
+     * const start = DateTime.dateOnly(2024, 0, 15);
+     * start.setRangeEnd(DateTime.dateOnly(2024, 0, 20));
+     * const rangeEnd = start.getRangeEnd(); // DateTime for Jan 20
+     *
+     * const noRange = DateTime.dateOnly(2024, 0, 15);
+     * noRange.getRangeEnd(); // null
+     */
+    public getRangeEnd(): DateTime | null;
+
     #private;
 }
 
