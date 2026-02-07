@@ -963,6 +963,10 @@ const GALLERY_STYLE_PREVIEW_FEATURED: "preview-featured";
  */
 type IconName = string;
 
+const NAVIGATION_PANEL_COLLECTIONVIEW: "overview";
+
+const NAVIGATION_PANEL_EDITOR: "edit_panel";
+
 const PLUGIN_LINE_ITEM_SEGMENT_TYPE_BOLD: "bold";
 
 const PLUGIN_LINE_ITEM_SEGMENT_TYPE_CODE: "code";
@@ -1184,6 +1188,10 @@ type PluginConfiguration = {
      */
     icon: string;
     /**
+     * - collection color (index into ENUM_COLORS, null for default)
+     */
+    color?: number | null;
+    /**
      * - collection name
      */
     name: string;
@@ -1246,6 +1254,10 @@ type PluginConfiguration = {
         [x: string]: any;
     };
     home: boolean;
+    /**
+     * - query for Related Template shown at top of each page
+     */
+    related_query?: string;
 };
 
 /**
@@ -1679,8 +1691,9 @@ class PluginPanel {
      * Navigate the panel to any new location
      *
      * @param {Object} navigation Navigation state
-     * @param {string} navigation.type Panel type
-     * @param {string?} navigation.rootId Root ID
+     * @param {string} navigation.type Panel type - use NAVIGATION_PANEL_EDITOR ('edit_panel') to open
+     *   a record in the editor, or NAVIGATION_PANEL_COLLECTIONVIEW ('overview') to open a collection view
+     * @param {string?} navigation.rootId Root ID (e.g. the record guid for NAVIGATION_PANEL_EDITOR)
      * @param {string?} navigation.subId Sub ID
      * @param {string?} navigation.workspaceGuid Workspace GUID
      * @param {Object} [navigation.state] Additional state
@@ -1987,9 +2000,41 @@ class PluginRecord {
      * @param {PluginLineItem?} parentItem - null: use record as parent
      * @param {PluginLineItem?} afterItem
      * @param {PluginLineItemType} type
+     * @param {PluginLineItemSegment[]?} segments
+     * @param {PluginLineItemProps?} properties
      * @returns {Promise<PluginLineItem?>} - returns new line item, null when failed
      */
-    public createLineItem(parentItem: PluginLineItem | null, afterItem: PluginLineItem | null, type: PluginLineItemType): Promise<PluginLineItem | null>;
+    public createLineItem(parentItem: PluginLineItem | null, afterItem: PluginLineItem | null, type: PluginLineItemType, segments: PluginLineItemSegment[] | null, properties: PluginLineItemProps | null): Promise<PluginLineItem | null>;
+    /**
+     * @public
+     * Insert content parsed from an HTML string into this record.
+     *
+     * @param {string} html - HTML string to parse and insert
+     * @param {PluginLineItem?} parentItem - null: use record as parent
+     * @param {PluginLineItem?} afterItem - null: insert as first child
+     * @returns {Promise<boolean>} true if all operations succeeded
+     */
+    public insertFromHTML(html: string, parentItem: PluginLineItem | null, afterItem: PluginLineItem | null): Promise<boolean>;
+    /**
+     * @public
+     * Insert content parsed from a Markdown string into this record.
+     *
+     * @param {string} markdown - Markdown string to parse and insert
+     * @param {PluginLineItem?} parentItem - null: use record as parent
+     * @param {PluginLineItem?} afterItem - null: insert as first child
+     * @returns {Promise<boolean>} true if all operations succeeded
+     */
+    public insertFromMarkdown(markdown: string, parentItem: PluginLineItem | null, afterItem: PluginLineItem | null): Promise<boolean>;
+    /**
+     * @public
+     * Insert content from a plain text string into this record.
+     *
+     * @param {string} text - Plain text string to parse and insert
+     * @param {PluginLineItem?} parentItem - null: use record as parent
+     * @param {PluginLineItem?} afterItem - null: insert as first child
+     * @returns {Promise<boolean>} true if all operations succeeded
+     */
+    public insertFromPlainText(text: string, parentItem: PluginLineItem | null, afterItem: PluginLineItem | null): Promise<boolean>;
     /**
      * @public
      * Get all line items in this record's document tree
@@ -2026,10 +2071,10 @@ class PluginRecord {
      * @example
      * const price = record.number("Price");
      *
-     * @param {*} name
+     * @param {string} name
      * @returns {number?}
      */
-    public number(name: any): number | null;
+    public number(name: string): number | null;
     /**
      * @public
      * Shorthand for prop(name).date()
@@ -2037,10 +2082,21 @@ class PluginRecord {
      * @example
      * const startDate = record.date("Start Date");
      *
-     * @param {*} name
+     * @param {string} name
      * @returns {Date?}
      */
-    public date(name: any): Date | null;
+    public date(name: string): Date | null;
+    /**
+     * @public
+     * Shorthand for prop(name).datetime()
+     *
+     * @example
+     * const dt = record.datetime("Due Date");
+     *
+     * @param {string} name
+     * @returns {DateTime?}
+     */
+    public datetime(name: string): DateTime | null;
     /**
      * @public
      * Shorthand for prop(name).text()
@@ -2048,10 +2104,10 @@ class PluginRecord {
      * @example
      * const name = record.text("Name");
      *
-     * @param {*} name
+     * @param {string} name
      * @returns {string?}
      */
-    public text(name: any): string | null;
+    public text(name: string): string | null;
     /**
      * @public
      * Shorthand for prop(name).choice()
@@ -2059,10 +2115,10 @@ class PluginRecord {
      * @example
      * const status = record.choice("Status");
      *
-     * @param {*} name
+     * @param {string} name
      * @returns {string?}
      */
-    public choice(name: any): string | null;
+    public choice(name: string): string | null;
     #private;
 }
 
@@ -2464,6 +2520,10 @@ type PropertyField = {
      * - Format for PROP_TYPE_NUMBER: 'plain', 'formatted', or currency code ('USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'SEK', 'NOK'). Defaults to 'formatted'.
      */
     number_format?: string;
+    /**
+     * - For PROP_TYPE_RECORD: optional collection guid to filter records by. If set, only records from that collection are shown. If the collection doesn't exist or is trashed, no records are shown.
+     */
+    filter_colguid?: string;
 };
 
 type PropertyFileValue = {

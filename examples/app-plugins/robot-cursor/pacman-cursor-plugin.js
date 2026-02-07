@@ -1,5 +1,11 @@
 /**
-* (See the plugin-sdk's README.md for more details on how to install and test these examples.)
+*
+* NOTE: if you want to try this example right away without development project, create a new Plugin in Thymer 
+* (Command Palette -> Plugins -> Create Plugin) and paste in the code from _another file_ in this directory: 
+* 'pacman-cursor-plugin-dist.js'. The current file (pacman-cursor-plugin.js) only works together with the 
+* 'npm run dev' dev build loop for development. See the SDK's README.md for more details.
+*
+* ***
 * 
 * Example plugin which turns your cursor into a walking robot!
 *
@@ -13,9 +19,10 @@
 * - Including an asset within the plugin (they're inlined so not recommended for large files)
 * - Interacting with other DOM elements in the app (in this case, the text caret)
 */
-import walker from './walker-8f2.png';
+//import walker from './walker-8f2.png';
+import walker from './pacman-8f2.png';
 
-class Plugin extends AppPlugin {
+export class Plugin extends AppPlugin {
 	
 	onLoad() {
 
