@@ -2,5 +2,5 @@
 	"ver": 1,
 	"name": "Hardcover",
 	"icon": "book",
-	"description": "Sync your Hardcover reading library to Thymer. Shows currently reading, want to read, and recently read books in the sidebar."
+	"description": "Sync your Hardcover reading library to Thymer. Click the book icon in the status bar to open the library panel and connect your account."
 }
