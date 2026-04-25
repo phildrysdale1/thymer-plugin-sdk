@@ -1,6 +1,133 @@
 {
 	"ver": 1,
-	"name": "Hardcover",
+	"name": "Books",
 	"icon": "book",
-	"description": "Sync your Hardcover reading library to Thymer. Click the book icon in the status bar to open the library panel and connect your account."
+	"item_name": "Book",
+	"description": "Sync your Hardcover reading library. Each book becomes its own page with title, author, genres, status, rating and more.",
+	"home": false,
+	"show_sidebar_items": true,
+	"show_cmdpal_items": true,
+	"default_banner": null,
+	"page_field_ids": ["title"],
+	"sidebar_record_sort_field_id": "updated_at",
+	"sidebar_record_sort_dir": "desc",
+	"fields": [
+		{
+			"id": "title",
+			"label": "Title",
+			"type": "text",
+			"icon": "ti-book",
+			"many": false,
+			"read_only": false,
+			"active": true
+		},
+		{
+			"id": "author",
+			"label": "Author",
+			"type": "text",
+			"icon": "ti-user",
+			"many": false,
+			"read_only": false,
+			"active": true
+		},
+		{
+			"id": "published_year",
+			"label": "Published Year",
+			"type": "number",
+			"icon": "ti-calendar",
+			"many": false,
+			"read_only": false,
+			"active": true
+		},
+		{
+			"id": "status",
+			"label": "Status",
+			"type": "choice",
+			"icon": "ti-circle-check",
+			"many": false,
+			"read_only": false,
+			"active": true
+		},
+		{
+			"id": "rating",
+			"label": "Rating",
+			"type": "number",
+			"icon": "ti-star",
+			"many": false,
+			"read_only": false,
+			"active": true
+		},
+		{
+			"id": "genres",
+			"label": "Genres",
+			"type": "text",
+			"icon": "ti-tag",
+			"many": true,
+			"read_only": false,
+			"active": true
+		},
+		{
+			"id": "read_date",
+			"label": "Read Date",
+			"type": "text",
+			"icon": "ti-calendar-event",
+			"many": false,
+			"read_only": false,
+			"active": true
+		},
+		{
+			"id": "synopsis",
+			"label": "Synopsis",
+			"type": "text",
+			"icon": "ti-file-text",
+			"many": false,
+			"read_only": false,
+			"active": true
+		},
+		{
+			"id": "hardcover_id",
+			"label": "Hardcover ID",
+			"type": "number",
+			"icon": "ti-hash",
+			"many": false,
+			"read_only": true,
+			"active": true
+		}
+	],
+	"views": [
+		{
+			"id": "table",
+			"type": "table",
+			"label": "Table",
+			"icon": "",
+			"description": "",
+			"query": "",
+			"shown": true,
+			"read_only": false,
+			"field_ids": ["author", "status", "rating", "genres", "read_date", "published_year"],
+			"sort_field_id": "updated_at",
+			"sort_dir": "desc",
+			"group_by_field_id": null
+		},
+		{
+			"id": "board",
+			"type": "board",
+			"label": "Board",
+			"icon": "",
+			"description": "",
+			"query": "",
+			"shown": true,
+			"read_only": false,
+			"field_ids": ["author", "rating", "genres"],
+			"sort_field_id": "updated_at",
+			"sort_dir": "desc",
+			"group_by_field_id": "status"
+		}
+	],
+	"managed": {
+		"fields": false,
+		"views": false,
+		"sidebar": false
+	},
+	"custom": {}
 }

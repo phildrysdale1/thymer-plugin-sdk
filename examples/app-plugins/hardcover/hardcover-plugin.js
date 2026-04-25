@@ -1,118 +1,92 @@
 /**
- * Hardcover Plugin for Thymer
+ * Hardcover Books — Thymer Collection Plugin
  *
- * Click the book icon in the status bar (or run "Hardcover: Open Library"
- * from the command palette) to open the setup panel.
+ * Creates one page (record) per book in your Hardcover library.
+ * Each record gets: Title, Author, Published Year, Read Date,
+ * Synopsis, Genres, Status, and Rating.
  *
- * Because Thymer runs in a browser, direct calls to api.hardcover.app are
- * blocked by CORS. You need to deploy the included hardcover-proxy-worker.js
- * as a Cloudflare Worker and enter its URL in the setup form.
+ * Setup:
+ * 1. Install as a Collection Plugin on a new "Books" collection
+ * 2. Click "Sync Hardcover" in the collection toolbar
+ * 3. Enter your Hardcover API key and Cloudflare proxy URL
  *
- * Features:
- * - Full-panel library view: Currently Reading, Want to Read, Recently Read
- * - Status bar item showing number of books currently being read
- * - Command palette commands to open the panel or manually sync
- * - Sidebar widget showing a quick currently-reading overview
- * - Auto-sync every 30 minutes once connected
+ * The Cloudflare proxy is required because Hardcover's API blocks
+ * direct browser requests (CORS). Deploy hardcover-proxy-worker.js
+ * as a Cloudflare Worker to get your proxy URL.
  */
 
-class Plugin extends AppPlugin {
+class Plugin extends CollectionPlugin {
 
     onLoad() {
-        this.API_KEY_STORAGE  = 'thymer_hardcover_apikey';
+        this.API_KEY_STORAGE   = 'thymer_hardcover_apikey';
         this.PROXY_URL_STORAGE = 'thymer_hardcover_proxyurl';
-        this.books    = null;
-        this.syncing  = false;
-        this.widgetRefresh = null;
+        this.syncing = false;
 
         this.ui.injectCSS(this._css());
 
-        // Register custom panel type — our main UI surface
-        this.ui.registerCustomPanelType('hardcover', (panel) => {
-            this._renderPanel(panel);
+        // Setup panel — opened when not yet configured
+        this.ui.registerCustomPanelType('hardcover-books-setup', (panel) => {
+            this._renderSetupPanel(panel);
         });
 
-        // Status bar item
-        this.statusBarItem = this.ui.addStatusBarItem({
-            label: '📚',
-            icon: 'book',
-            tooltip: 'Hardcover — click to open',
-            onClick: () => this._openPanel(),
-        });
-
-        // Command palette
-        this.ui.addCommandPaletteCommand({
-            label: 'Hardcover: Open Library',
-            icon: 'book',
-            onSelected: () => this._openPanel(),
-        });
-        this.ui.addCommandPaletteCommand({
-            label: 'Hardcover: Sync Library',
+        // Button in the collection toolbar
+        this.addCollectionNavigationButton({
+            label: 'Sync Hardcover',
             icon: 'refresh',
-            onSelected: () => this._syncAndRefresh(),
+            onClick: () => this._onSyncClicked(),
         });
+    }
 
-        // Sidebar widget — quick-glance overview
-        this.ui.addSidebarWidget((container, { refresh }) => {
-            this.widgetRefresh = refresh;
-            try { this._renderSidebar(container); } catch (e) {
-                container.innerHTML = '<div style="padding:10px 12px;font-size:12px">📚 Hardcover</div>';
-            }
-            const timer = setInterval(() => this._syncAndRefresh(), 30 * 60 * 1000);
-            return () => { clearInterval(timer); this.widgetRefresh = null; };
-        });
+    onUnload() {}
 
-        // Initial sync if already configured
-        if (this._getApiKey() && this._getProxyUrl()) {
-            this._syncLibrary()
-                .then(() => { if (this.widgetRefresh) this.widgetRefresh(); })
-                .catch(() => {});
+    // -------------------------------------------------------------------------
+    // Sync trigger
+    // -------------------------------------------------------------------------
+
+    async _onSyncClicked() {
+        if (!this._getApiKey() || !this._getProxyUrl()) {
+            await this._openSetupPanel();
+            return;
         }
+        await this._runSync();
     }
 
-    onUnload() {
-        if (this.statusBarItem) this.statusBarItem.remove();
-    }
-
-    // -------------------------------------------------------------------------
-    // Storage helpers
-    // -------------------------------------------------------------------------
-
-    _getApiKey()   { return localStorage.getItem(this.API_KEY_STORAGE)  || ''; }
-    _getProxyUrl() { return localStorage.getItem(this.PROXY_URL_STORAGE) || ''; }
-
-    _saveApiKey(key)     { key ? localStorage.setItem(this.API_KEY_STORAGE,  key) : localStorage.removeItem(this.API_KEY_STORAGE);  }
-    _saveProxyUrl(url)   { url ? localStorage.setItem(this.PROXY_URL_STORAGE, url) : localStorage.removeItem(this.PROXY_URL_STORAGE); }
-
-    // -------------------------------------------------------------------------
-    // Panel management
-    // -------------------------------------------------------------------------
-
-    async _openPanel() {
+    async _openSetupPanel() {
         try {
             const panel = await this.ui.createPanel();
             if (panel) {
                 this.ui.setActivePanel(panel);
-                panel.navigateToCustomType('hardcover');
+                panel.navigateToCustomType('hardcover-books-setup');
             }
         } catch (e) {
-            this.ui.addToaster({ title: 'Hardcover', message: 'Could not open panel: ' + e.message, dismissible: true, autoDestroyTime: 4000 });
+            this.ui.addToaster({
+                title: 'Hardcover',
+                message: 'Could not open setup panel: ' + e.message,
+                dismissible: true,
+                autoDestroyTime: 5000,
+            });
         }
     }
 
-    _renderPanel(panel) {
+    // -------------------------------------------------------------------------
+    // Setup panel
+    // -------------------------------------------------------------------------
+
+    _renderSetupPanel(panel) {
         const render = () => {
             const el = panel.getElement();
             el.innerHTML = '';
+            el.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;';
+
             if (!this._getApiKey() || !this._getProxyUrl()) {
-                el.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;';
-                this._renderSetup(el, async (key, proxyUrl) => {
+                this._renderSetupForm(el, async (key, proxyUrl) => {
                     this._saveApiKey(key);
                     this._saveProxyUrl(proxyUrl);
                     try {
-                        await this._syncLibrary();
-                        if (this.widgetRefresh) this.widgetRefresh();
+                        // Verify the key works before proceeding
+                        await this._graphql('query { me { id } }');
                         render();
+                        this._runSync();
                     } catch (e) {
                         this._saveApiKey('');
                         this._saveProxyUrl('');
@@ -120,57 +94,51 @@ class Plugin extends AppPlugin {
                     }
                 });
             } else {
-                el.style.cssText = '';
-                this._renderLibrary(el, {
-                    onSync: async () => { await this._syncAndRefresh(); render(); },
-                    onDisconnect: () => {
-                        this._saveApiKey('');
-                        this._saveProxyUrl('');
-                        this.books = null;
-                        this._updateStatusBar('ready');
-                        if (this.widgetRefresh) this.widgetRefresh();
-                        render();
-                    },
+                el.innerHTML = `
+                    <div class="hc-setup">
+                        <div class="hc-setup-logo">✅</div>
+                        <h2 class="hc-setup-title">Hardcover Connected</h2>
+                        <p class="hc-setup-desc">Your library is syncing. Click “Sync Hardcover” in the collection toolbar at any time to refresh.</p>
+                        <button id="hc-disc" class="hc-btn hc-btn-danger">Disconnect</button>
+                    </div>`;
+                el.querySelector('#hc-disc').addEventListener('click', () => {
+                    this._saveApiKey('');
+                    this._saveProxyUrl('');
+                    render();
                 });
             }
         };
         render();
     }
 
-    // -------------------------------------------------------------------------
-    // Setup form
-    // -------------------------------------------------------------------------
-
-    _renderSetup(container, onConnect) {
+    _renderSetupForm(container, onConnect) {
         container.innerHTML = `
             <div class="hc-setup">
                 <div class="hc-setup-logo">📚</div>
                 <h2 class="hc-setup-title">Connect Hardcover</h2>
                 <p class="hc-setup-desc">
-                    Sync your Hardcover reading library into Thymer.
+                    Sync your Hardcover library into this collection.
+                    Each book will get its own page with title, author, genres, and more.
                 </p>
-
                 <div class="hc-field">
                     <label class="hc-label" for="hc-apikey">Hardcover API Key</label>
                     <input id="hc-apikey" type="password" class="hc-input"
-                        placeholder="Paste your API key…" autocomplete="off" />
+                           placeholder="Paste your API key…" autocomplete="off" />
                     <div class="hc-field-hint">
                         <a href="https://hardcover.app/account/api" target="_blank" class="hc-link">Get your API key ↗</a>
                     </div>
                 </div>
-
                 <div class="hc-field">
                     <label class="hc-label" for="hc-proxy">Cloudflare Worker Proxy URL</label>
                     <input id="hc-proxy" type="url" class="hc-input"
-                        placeholder="https://hardcover-proxy.yourname.workers.dev" />
+                           placeholder="https://hardcover-proxy.yourname.workers.dev" />
                     <div class="hc-field-hint">
-                        Required to bypass browser CORS restrictions.
-                        Deploy <code>hardcover-proxy-worker.js</code> as a Cloudflare Worker
+                        Required to bypass browser CORS. Deploy
+                        <code>hardcover-proxy-worker.js</code> as a Cloudflare Worker
                         and paste its URL here.
                     </div>
                 </div>
-
-                <button id="hc-connect" class="hc-btn hc-btn-primary hc-btn-wide">Connect</button>
+                <button id="hc-connect" class="hc-btn hc-btn-primary hc-btn-wide">Connect &amp; Sync</button>
                 <div id="hc-err" class="hc-error" style="display:none"></div>
             </div>`;
 
@@ -179,7 +147,6 @@ class Plugin extends AppPlugin {
         const btn        = container.querySelector('#hc-connect');
         const err        = container.querySelector('#hc-err');
 
-        // Pre-fill if values already saved
         inputKey.value   = this._getApiKey();
         inputProxy.value = this._getProxyUrl();
 
@@ -189,8 +156,6 @@ class Plugin extends AppPlugin {
             if (!key)   { err.textContent = 'Please enter your API key.';   err.style.display = 'block'; return; }
             if (!proxy) { err.textContent = 'Please enter your proxy URL.'; err.style.display = 'block'; return; }
             if (key.toLowerCase().startsWith('bearer ')) key = key.slice(7).trim();
-            if (!proxy.endsWith('/')) proxy = proxy; // keep as-is
-
             btn.disabled    = true;
             btn.textContent = 'Connecting…';
             err.style.display = 'none';
@@ -198,124 +163,230 @@ class Plugin extends AppPlugin {
                 await onConnect(key, proxy);
             } catch (e) {
                 btn.disabled    = false;
-                btn.textContent = 'Connect';
+                btn.textContent = 'Connect & Sync';
                 err.textContent = e.message;
                 err.style.display = 'block';
             }
         };
 
         btn.addEventListener('click', attempt);
-        [inputKey, inputProxy].forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); }));
+        [inputKey, inputProxy].forEach(i =>
+            i.addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); })
+        );
         setTimeout(() => inputKey.focus(), 50);
     }
 
     // -------------------------------------------------------------------------
-    // Library view
+    // Main sync
     // -------------------------------------------------------------------------
 
-    _renderLibrary(container, { onSync, onDisconnect }) {
-        const { currentlyReading = [], wantToRead = [], read = [], didNotFinish = [] } = this.books || {};
-        const total = currentlyReading.length + wantToRead.length + read.length + didNotFinish.length;
+    async _runSync() {
+        if (this.syncing) {
+            this.ui.addToaster({ title: 'Hardcover', message: 'Sync already in progress.', dismissible: true, autoDestroyTime: 3000 });
+            return;
+        }
+        this.syncing = true;
 
-        container.innerHTML = `
-            <div class="hc-panel">
-                <div class="hc-panel-header">
-                    <span class="hc-panel-title">📚 Hardcover Library</span>
-                    <div class="hc-panel-actions">
-                        <button id="hc-sync" class="hc-btn hc-btn-secondary">↻ Sync</button>
-                        <button id="hc-disc" class="hc-btn hc-btn-danger">Disconnect</button>
-                    </div>
-                </div>
-                <div class="hc-panel-body">
-                    ${this._sectionHtml('Currently Reading', currentlyReading)}
-                    ${this._sectionHtml('Want to Read',      wantToRead.slice(0, 10))}
-                    ${this._sectionHtml('Read',              read.slice(0, 10))}
-                    ${didNotFinish.length ? this._sectionHtml('Did Not Finish', didNotFinish) : ''}
-                    <div class="hc-panel-footer">${total} book${total !== 1 ? 's' : ''} synced</div>
-                </div>
-            </div>`;
-
-        const syncBtn = container.querySelector('#hc-sync');
-        syncBtn.addEventListener('click', async () => {
-            syncBtn.disabled    = true;
-            syncBtn.textContent = '↻ Syncing…';
-            try { await onSync(); } catch (e) { syncBtn.disabled = false; syncBtn.textContent = '↻ Sync'; }
+        this.ui.addToaster({
+            title: 'Hardcover',
+            message: 'Fetching your library…',
+            dismissible: true,
+            autoDestroyTime: 3000,
         });
-        container.querySelector('#hc-disc').addEventListener('click', onDisconnect);
-    }
 
-    _sectionHtml(title, books) {
-        if (!books || books.length === 0) return '';
-        return `
-            <div class="hc-section">
-                <div class="hc-section-title">${this.ui.htmlEscape(title)}</div>
-                <div class="hc-grid">${books.map(b => this._cardHtml(b)).join('')}</div>
-            </div>`;
-    }
+        try {
+            const books = await this._fetchAllBooks();
 
-    _cardHtml(book) {
-        const t = this.ui.htmlEscape(book.title);
-        const a = book.authors ? this.ui.htmlEscape(book.authors) : '';
-        const u = this.ui.htmlEscape(book.url);
-        const c = book.cover   ? this.ui.htmlEscape(book.cover)   : '';
-        const s = book.rating != null
-            ? '★'.repeat(Math.round(book.rating)) + '☆'.repeat(5 - Math.round(book.rating))
-            : '';
-        return `
-            <a class="hc-card" href="${u}" target="_blank" title="${t}">
-                <div class="hc-cover">
-                    ${c ? `<img src="${c}" alt="" loading="lazy">` : '<div class="hc-cover-blank">📖</div>'}
-                </div>
-                <div class="hc-card-body">
-                    <div class="hc-card-title">${t}</div>
-                    ${a ? `<div class="hc-card-author">${a}</div>` : ''}
-                    ${s ? `<div class="hc-card-stars">${s}</div>`  : ''}
-                </div>
-            </a>`;
-    }
+            // Index existing records by hardcover_id for O(1) lookup
+            const existing = await this.collection.getAllRecords();
+            const byHcId = new Map();
+            for (const rec of existing) {
+                const hcId = rec.number('hardcover_id');
+                if (hcId != null) byHcId.set(hcId, rec);
+            }
 
-    // -------------------------------------------------------------------------
-    // Sidebar widget
-    // -------------------------------------------------------------------------
+            let created = 0;
+            let updated = 0;
 
-    _renderSidebar(container) {
-        if (!this._getApiKey() || !this._getProxyUrl()) {
-            container.innerHTML = `
-                <div style="padding:10px 12px;font-size:12px;color:var(--side-fg-color,#555)">
-                    <strong>📚 Hardcover</strong><br>
-                    <span style="font-size:11px;color:var(--text-muted,#888)">Click 📚 in the status bar to connect</span>
-                </div>`;
-            return;
-        }
-        if (!this.books) {
-            container.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--text-muted,#888)">📚 Loading…</div>';
-            return;
-        }
-        const books = [...(this.books.currentlyReading || []), ...(this.books.wantToRead || []).slice(0, 3)];
-        container.innerHTML = `
-            <div style="padding:8px 10px;font-size:12px">
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#999);margin-bottom:6px">📚 Reading</div>
-                ${books.length === 0
-                    ? '<div style="color:var(--text-muted,#888)">Nothing in progress</div>'
-                    : books.map(b => `
-                        <a href="${this.ui.htmlEscape(b.url)}" target="_blank"
-                           style="display:flex;gap:8px;align-items:center;padding:4px 2px;text-decoration:none;color:inherit">
-                            ${b.cover
-                                ? `<img src="${this.ui.htmlEscape(b.cover)}" style="width:24px;height:34px;object-fit:cover;border-radius:2px;flex-shrink:0" alt="">`
-                                : '📖'}
-                            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this.ui.htmlEscape(b.title)}</span>
-                        </a>`).join('')
+            for (const book of books) {
+                if (byHcId.has(book.id)) {
+                    await this._applyToRecord(byHcId.get(book.id), book);
+                    updated++;
+                } else {
+                    await this._createRecord(book);
+                    created++;
                 }
-            </div>`;
+            }
+
+            this.ui.addToaster({
+                title: 'Hardcover sync complete',
+                message: created + ' created, ' + updated + ' updated',
+                dismissible: true,
+                autoDestroyTime: 5000,
+            });
+        } catch (e) {
+            this.ui.addToaster({
+                title: 'Hardcover sync failed',
+                message: e.message,
+                dismissible: true,
+                autoDestroyTime: 10000,
+            });
+        } finally {
+            this.syncing = false;
+        }
     }
 
     // -------------------------------------------------------------------------
-    // Hardcover GraphQL API (via proxy)
+    // Record create / update
     // -------------------------------------------------------------------------
+
+    async _createRecord(book) {
+        const guid = this.collection.createRecord(book.title);
+        if (!guid) return;
+        const record = await this.collection.getRecord(guid);
+        if (!record) return;
+        await this._applyToRecord(record, book);
+    }
+
+    async _applyToRecord(record, book) {
+        const set = (fieldId, value) => {
+            if (value == null || value === '') return;
+            const prop = record.prop(fieldId);
+            if (!prop) return;
+            return value;
+        };
+
+        const p = (id) => record.prop(id);
+
+        if (book.author        && p('author'))         p('author').setText(book.author);
+        if (book.publishedYear && p('published_year')) p('published_year').setNumber(book.publishedYear);
+        if (book.readDate      && p('read_date'))      p('read_date').setText(book.readDate);
+        if (book.synopsis      && p('synopsis'))       p('synopsis').setText(book.synopsis);
+        if (book.status        && p('status'))         p('status').setChoice(book.status);
+        if (book.rating != null && p('rating'))        p('rating').setNumber(book.rating);
+        if (p('hardcover_id'))                         p('hardcover_id').setNumber(book.id);
+
+        if (book.genres && book.genres.length > 0 && p('genres')) {
+            const genresProp = p('genres');
+            genresProp.clear();
+            for (const g of book.genres) {
+                genresProp.add(g);
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Hardcover API
+    // -------------------------------------------------------------------------
+
+    async _fetchAllBooks() {
+        const data = await this._graphql(`
+            query GetHardcoverLibrary {
+                me {
+                    user_books(
+                        where: { status_id: { _in: [1, 2, 3, 5] } }
+                        order_by: { updated_at: desc }
+                        limit: 500
+                    ) {
+                        book_id
+                        status_id
+                        rating
+                        book {
+                            title
+                            release_date
+                            description
+                            cached_contributors
+                            cached_tags
+                        }
+                        user_book_reads(
+                            order_by: { started_at: desc }
+                            limit: 1
+                        ) {
+                            started_at
+                            finished_at
+                        }
+                    }
+                }
+            }
+        `);
+
+        return data.me[0].user_books.map(ub => this._mapBook(ub));
+    }
+
+    _mapBook(ub) {
+        const book  = ub.book || {};
+        const reads = ub.user_book_reads || [];
+        const read  = reads[0] || null;
+
+        return {
+            id:            ub.book_id,
+            title:         book.title || 'Unknown',
+            author:        this._extractAuthors(book.cached_contributors),
+            publishedYear: this._extractYear(book.release_date),
+            readDate:      this._formatReadDate(read),
+            synopsis:      book.description ? book.description.replace(/\n+/g, ' ').trim() : null,
+            genres:        this._extractGenres(book.cached_tags),
+            status:        this._mapStatus(ub.status_id),
+            rating:        ub.rating,
+        };
+    }
+
+    _extractAuthors(contributors) {
+        if (!Array.isArray(contributors) || contributors.length === 0) return '';
+        const singleNameAsRole =
+            contributors.length === 1 &&
+            contributors[0].contribution === (contributors[0].author && contributors[0].author.name);
+        return contributors
+            .filter(c => singleNameAsRole || !c.contribution || c.contribution === '' || c.contribution === 'Author')
+            .map(c => c.author && c.author.name)
+            .filter(Boolean)
+            .slice(0, 3)
+            .join(', ');
+    }
+
+    _extractYear(releaseDate) {
+        if (!releaseDate) return null;
+        const y = parseInt(releaseDate.slice(0, 4), 10);
+        return isNaN(y) ? null : y;
+    }
+
+    _formatReadDate(read) {
+        if (!read) return null;
+        const dateStr = read.finished_at || read.started_at;
+        if (!dateStr) return null;
+        // Hardcover dates are YYYY-MM-DD; if day is 01 it often means only month is known
+        const parts = dateStr.slice(0, 10).split('-');
+        if (parts.length < 2) return parts[0]; // year only
+        const year  = parts[0];
+        const month = ['January','February','March','April','May','June',
+                       'July','August','September','October','November','December'][parseInt(parts[1], 10) - 1];
+        if (!parts[2] || parts[2] === '01') return month + ' ' + year;
+        return parts[2] + ' ' + month + ' ' + year;
+    }
+
+    _extractGenres(cachedTags) {
+        if (!cachedTags || !Array.isArray(cachedTags.Genre)) return [];
+        return cachedTags.Genre
+            .slice() // don't mutate
+            .sort((a, b) => (b.count || 0) - (a.count || 0))
+            .slice(0, 5)
+            .map(t => t.tag)
+            .filter(Boolean);
+    }
+
+    _mapStatus(statusId) {
+        switch (statusId) {
+            case 1: return 'Want to Read';
+            case 2: return 'Currently Reading';
+            case 3: return 'Read';
+            case 5: return 'Did Not Finish';
+            default: return null;
+        }
+    }
 
     async _graphql(query, variables = {}) {
-        let key      = this._getApiKey();
-        const proxy  = this._getProxyUrl();
+        let key     = this._getApiKey();
+        const proxy = this._getProxyUrl();
         if (!key)   throw new Error('No API key configured.');
         if (!proxy) throw new Error('No proxy URL configured.');
         if (key.toLowerCase().startsWith('bearer ')) key = key.slice(7).trim();
@@ -337,149 +408,40 @@ class Plugin extends AppPlugin {
         return json.data;
     }
 
-    async _syncLibrary() {
-        if (this.syncing) return;
-        this.syncing = true;
-        this._updateStatusBar('syncing');
-        try {
-            const data = await this._graphql(`
-                query GetHardcoverLibrary {
-                    me {
-                        user_books(
-                            where: { status_id: { _in: [1, 2, 3, 5] } }
-                            order_by: [{ status_id: asc }, { updated_at: desc }]
-                            limit: 100
-                        ) {
-                            book_id
-                            status_id
-                            rating
-                            book {
-                                title
-                                slug
-                                cached_image
-                                cached_contributors
-                            }
-                        }
-                    }
-                }
-            `);
-            this.books = this._processBooks(data.me[0].user_books);
-            this._updateStatusBar('ready');
-        } catch (e) {
-            this._updateStatusBar('error');
-            throw e;
-        } finally {
-            this.syncing = false;
-        }
-    }
-
-    _processBooks(userBooks) {
-        const g = { currentlyReading: [], wantToRead: [], read: [], didNotFinish: [] };
-        for (const ub of userBooks) {
-            const b = {
-                id:      ub.book_id,
-                title:   (ub.book && ub.book.title)  || 'Unknown',
-                cover:   (ub.book && ub.book.cached_image && ub.book.cached_image.url) || null,
-                authors: this._extractAuthors(ub.book && ub.book.cached_contributors),
-                rating:  ub.rating,
-                url:     'https://hardcover.app/books/' + ((ub.book && ub.book.slug) || ''),
-            };
-            switch (ub.status_id) {
-                case 1: g.wantToRead.push(b);       break;
-                case 2: g.currentlyReading.push(b); break;
-                case 3: g.read.push(b);             break;
-                case 5: g.didNotFinish.push(b);     break;
-            }
-        }
-        return g;
-    }
-
-    _extractAuthors(contributors) {
-        if (!Array.isArray(contributors) || contributors.length === 0) return '';
-        const singleNameAsRole =
-            contributors.length === 1 &&
-            contributors[0].contribution === (contributors[0].author && contributors[0].author.name);
-        return contributors
-            .filter(c => singleNameAsRole || !c.contribution || c.contribution === '' || c.contribution === 'Author')
-            .map(c => c.author && c.author.name)
-            .filter(Boolean)
-            .slice(0, 3)
-            .join(', ');
-    }
-
     // -------------------------------------------------------------------------
-    // Status bar
+    // Storage (localStorage keeps sensitive data out of Thymer's servers)
     // -------------------------------------------------------------------------
 
-    _updateStatusBar(state) {
-        if (!this.statusBarItem) return;
-        if (state === 'syncing') {
-            this.statusBarItem.setLabel('📚 …');
-            this.statusBarItem.setTooltip('Syncing Hardcover…');
-        } else if (state === 'error') {
-            this.statusBarItem.setLabel('📚 !');
-            this.statusBarItem.setTooltip('Hardcover sync error — click to open');
-        } else {
-            const n = (this.books && this.books.currentlyReading) ? this.books.currentlyReading.length : 0;
-            this.statusBarItem.setLabel(n > 0 ? '📚 ' + n : '📚');
-            this.statusBarItem.setTooltip('Hardcover' + (n > 0 ? ' — ' + n + ' reading' : '') + ' — click to open');
-        }
-    }
-
-    async _syncAndRefresh() {
-        try {
-            await this._syncLibrary();
-        } catch (e) {
-            this.ui.addToaster({ title: 'Hardcover sync failed', message: e.message, dismissible: true, autoDestroyTime: 6000 });
-        }
-        if (this.widgetRefresh) this.widgetRefresh();
-    }
+    _getApiKey()     { return localStorage.getItem(this.API_KEY_STORAGE)   || ''; }
+    _getProxyUrl()   { return localStorage.getItem(this.PROXY_URL_STORAGE) || ''; }
+    _saveApiKey(k)   { k ? localStorage.setItem(this.API_KEY_STORAGE,   k) : localStorage.removeItem(this.API_KEY_STORAGE);   }
+    _saveProxyUrl(u) { u ? localStorage.setItem(this.PROXY_URL_STORAGE, u) : localStorage.removeItem(this.PROXY_URL_STORAGE); }
 
     // -------------------------------------------------------------------------
-    // Styles
+    // CSS
     // -------------------------------------------------------------------------
 
     _css() {
         return [
-            '.hc-panel{height:100%;display:flex;flex-direction:column;font-family:var(--font-family,sans-serif);font-size:13px}',
-            '.hc-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-default,#e0e0e0);flex-shrink:0}',
-            '.hc-panel-title{font-size:16px;font-weight:600}',
-            '.hc-panel-actions{display:flex;gap:8px}',
-            '.hc-panel-body{flex:1;overflow-y:auto;padding:20px}',
-            '.hc-panel-footer{font-size:12px;color:var(--text-muted,#888);padding-top:16px}',
-            '.hc-btn{padding:6px 14px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .15s}',
-            '.hc-btn:disabled{opacity:.55;cursor:not-allowed}',
-            '.hc-btn-primary{background:var(--enum-blue-bg,#4a90e2);color:var(--enum-blue-fg,#fff)}',
-            '.hc-btn-primary:hover:not(:disabled){opacity:.85}',
-            '.hc-btn-secondary{background:var(--bg-secondary,#f0f0f0);color:var(--fg-default,#333)}',
-            '.hc-btn-secondary:hover:not(:disabled){opacity:.8}',
-            '.hc-btn-danger{background:var(--enum-red-bg,#fee2e2);color:var(--enum-red-fg,#c00)}',
-            '.hc-btn-danger:hover:not(:disabled){opacity:.8}',
-            '.hc-btn-wide{width:100%;padding:10px;font-size:14px}',
-            '.hc-setup{display:flex;flex-direction:column;align-items:center;gap:16px;max-width:440px;width:100%;padding:40px 24px;text-align:center}',
+            '.hc-setup{display:flex;flex-direction:column;align-items:center;gap:16px;max-width:440px;width:100%;padding:40px 24px;text-align:center;font-family:var(--font-family,sans-serif)}',
             '.hc-setup-logo{font-size:52px;line-height:1}',
-            '.hc-setup-title{font-size:22px;font-weight:700;margin:0}',
+            '.hc-setup-title{font-size:22px;font-weight:700;margin:0;color:var(--fg-default,#333)}',
             '.hc-setup-desc{font-size:14px;color:var(--text-muted,#666);line-height:1.6;margin:0}',
             '.hc-field{width:100%;text-align:left}',
-            '.hc-label{font-size:12px;font-weight:600;display:block;margin-bottom:5px}',
+            '.hc-label{font-size:12px;font-weight:600;display:block;margin-bottom:5px;color:var(--fg-default,#333)}',
             '.hc-input{width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--border-default,#ddd);border-radius:7px;font-size:14px;background:var(--bg-default,#fff);color:var(--fg-default,#333);outline:none}',
             '.hc-input:focus{border-color:var(--enum-blue-border,#4a90e2);box-shadow:0 0 0 2px rgba(74,144,226,.15)}',
             '.hc-field-hint{font-size:11px;color:var(--text-muted,#888);margin-top:5px;line-height:1.5}',
+            '.hc-btn{padding:7px 16px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .15s}',
+            '.hc-btn:disabled{opacity:.55;cursor:not-allowed}',
+            '.hc-btn-primary{background:var(--enum-blue-bg,#4a90e2);color:var(--enum-blue-fg,#fff)}',
+            '.hc-btn-primary:hover:not(:disabled){opacity:.85}',
+            '.hc-btn-danger{background:var(--enum-red-bg,#fee2e2);color:var(--enum-red-fg,#c00)}',
+            '.hc-btn-danger:hover:not(:disabled){opacity:.8}',
+            '.hc-btn-wide{width:100%;padding:10px;font-size:14px}',
             '.hc-error{color:var(--enum-red-fg,#c00);font-size:13px;text-align:center}',
             '.hc-link{color:var(--link-color,#4a90e2);text-decoration:none}',
             '.hc-link:hover{text-decoration:underline}',
-            '.hc-section{margin-bottom:24px}',
-            '.hc-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted,#999);margin-bottom:10px}',
-            '.hc-grid{display:flex;flex-wrap:wrap;gap:10px}',
-            '.hc-card{display:flex;align-items:flex-start;gap:10px;width:calc(50% - 5px);min-width:200px;padding:10px;border-radius:8px;background:var(--bg-secondary,#f8f8f8);text-decoration:none;color:inherit;transition:background .12s;box-sizing:border-box}',
-            '.hc-card:hover{background:var(--bg-hover,#efefef)}',
-            '.hc-cover{width:46px;height:64px;flex-shrink:0;border-radius:4px;overflow:hidden;background:var(--bg-default,#e8e8e8);display:flex;align-items:center;justify-content:center}',
-            '.hc-cover img{width:100%;height:100%;object-fit:cover}',
-            '.hc-cover-blank{font-size:24px}',
-            '.hc-card-body{flex:1;min-width:0}',
-            '.hc-card-title{font-size:13px;font-weight:600;line-height:1.3;margin-bottom:3px}',
-            '.hc-card-author{font-size:12px;color:var(--text-muted,#888)}',
-            '.hc-card-stars{font-size:11px;color:var(--enum-yellow-fg,#f5a623);margin-top:4px}',
         ].join('\n');
     }
 }
