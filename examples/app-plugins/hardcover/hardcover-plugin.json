@@ -1,0 +1,6 @@
+{
+	"ver": 1,
+	"name": "Hardcover",
+	"icon": "book",
+	"description": "Sync your Hardcover reading library to Thymer. Shows currently reading, want to read, and recently read books in the sidebar."
+}
